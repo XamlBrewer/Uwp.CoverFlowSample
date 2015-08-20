@@ -6,6 +6,7 @@ using Windows.System;
 using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Animation;
 
@@ -22,22 +23,26 @@ namespace XamlBrewer.Uwp.Controls
         private Dictionary<object, CoverFlowItem> _objectToItemContainer;
         private List<CoverFlowItem> items;
 
+        private const double _threshold = 80.0; // Higher values == lower sensitivity
+        private double _distance = 0.0;
+        private bool _begin = true;
+
         private int selectedIndex;
         public int SelectedIndex
         {
             get { return selectedIndex; }
             set
             {
-                IndexSelected(value, false);
+                IndexSelected(value);
             }
         }
 
-        private void IndexSelected(int index, bool mouseclick)
+        private void IndexSelected(int index)
         {
-            IndexSelected(index, mouseclick, true);
+            IndexSelected(index, true);
         }
 
-        private void IndexSelected(int index, bool mouseclick, bool layoutChildren)
+        private void IndexSelected(int index, bool layoutChildren)
         {
             if (items.Count > 0)
             {
@@ -45,7 +50,7 @@ namespace XamlBrewer.Uwp.Controls
                 if (layoutChildren)
                     LayoutChildren();
 
-                CoverFlowEventArgs e = new CoverFlowEventArgs() { Index = index, Item = items[index].Content, MouseClick = mouseclick };
+                CoverFlowEventArgs e = new CoverFlowEventArgs() { Index = index, Item = items[index].Content };
 
                 if (SelectedItemChanged != null)
                     SelectedItemChanged(e);
@@ -232,41 +237,41 @@ namespace XamlBrewer.Uwp.Controls
             base.OnApplyTemplate();
             LayoutRoot = (FrameworkElement)GetTemplateChild("LayoutRoot");
             ItemsPresenter = (ItemsPresenter)GetTemplateChild("ItemsPresenter");
+
+            this.ManipulationMode = ManipulationModes.TranslateX | ManipulationModes.TranslateRailsX;
+            this.ManipulationStarted += CoverFlow_ManipulationStarted;
+            this.ManipulationDelta += CoverFlow_ManipulationDelta;
+            this.PointerWheelChanged += CoverFlow_PointerWheelChanged;
         }
 
-        // O dear, US keyboard only (D A S W for arrows ?).
-        public void OnKeyDown(object sender, KeyEventArgs e)
+        void CoverFlow_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
         {
-            if (e.VirtualKey == VirtualKey.Right || e.VirtualKey == VirtualKey.D)
+            _distance = 0.0;
+            _begin = true;
+        }
+
+        void CoverFlow_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+        {
+            _distance += e.Delta.Translation.X;
+
+            if (_begin || _distance < -_threshold || _distance > _threshold)
             {
-                NextItem();
-                e.Handled = true;
+                _distance = 0.0;
+                _begin = false;
+
+                if (e.Delta.Translation.X < 0 && this.SelectedIndex < Items.Count - 1)
+                    NextItem();
+                else if (e.Delta.Translation.X > 0 && this.SelectedIndex > 0)
+                    PreviousItem();
             }
-            else if (e.VirtualKey == VirtualKey.Left || e.VirtualKey == VirtualKey.A)
-            {
+        }
+
+        void CoverFlow_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+        {
+            if (e.GetCurrentPoint(null).Properties.MouseWheelDelta > 0 && this.SelectedIndex > 0)
                 PreviousItem();
-                e.Handled = true;
-            }
-            else if (e.VirtualKey == VirtualKey.PageDown || e.VirtualKey == VirtualKey.S || e.VirtualKey == VirtualKey.Down)
-            {
-                NextPage();
-                e.Handled = true;
-            }
-            else if (e.VirtualKey == VirtualKey.PageUp || e.VirtualKey == VirtualKey.W || e.VirtualKey == VirtualKey.Up)
-            {
-                PreviousPage();
-                e.Handled = true;
-            }
-            else if (e.VirtualKey == VirtualKey.Home || e.VirtualKey == VirtualKey.Q)
-            {
-                First();
-                e.Handled = true;
-            }
-            else if (e.VirtualKey == VirtualKey.End || e.VirtualKey == VirtualKey.E)
-            {
-                Last();
-                e.Handled = true;
-            }
+            else if (e.GetCurrentPoint(null).Properties.MouseWheelDelta < 0 && this.SelectedIndex < Items.Count - 1)
+                NextItem();
         }
 
         protected override void PrepareContainerForItemOverride(DependencyObject element, object item)
@@ -280,30 +285,28 @@ namespace XamlBrewer.Uwp.Controls
             if (!items.Contains(item2))
             {
                 items.Add(item2);
-                item2.ItemSelected += new EventHandler(item2_ItemSelected);
-                item2.SizeChanged += new SizeChangedEventHandler(item2_SizeChanged);
+                item2.ItemSelected += Item_Selected;
+                item2.SizeChanged += Item_SizeChanged;
             }
             if (items.Count == 1)
-                IndexSelected(0, false, false);
+                IndexSelected(0, false);
         }
 
-        void item2_SizeChanged(object sender, SizeChangedEventArgs e)
+        protected void Item_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             CoverFlowItem item = sender as CoverFlowItem;
             int index = items.IndexOf(item);
             LayoutChild(item, index);
         }
 
-        void item2_ItemSelected(object sender, EventArgs e)
+        protected void Item_Selected(object sender, EventArgs e)
         {
             CoverFlowItem item = sender as CoverFlowItem;
             if (item == null)
                 return;
             int index = items.IndexOf(item);
             if (index >= 0)
-                IndexSelected(index, true);
-            //SelectedIndex = index;
-
+                IndexSelected(index);
         }
         protected override void ClearContainerForItemOverride(DependencyObject element, object item)
         {

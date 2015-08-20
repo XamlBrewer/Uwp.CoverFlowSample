@@ -30,6 +30,7 @@ namespace XamlBrewer.Uwp.CoverFlowSample
             base.OnNavigatedTo(e);
 
             CoverFlow.ItemsSource = await GetUrls();
+            Slider.Maximum = CoverFlow.Items.Count() - 1;
         }
 
         private async static Task<IEnumerable<string>> GetUrls()

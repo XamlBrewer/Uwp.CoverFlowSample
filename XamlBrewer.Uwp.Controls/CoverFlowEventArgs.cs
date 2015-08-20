@@ -6,6 +6,5 @@ namespace XamlBrewer.Uwp.Controls
     {
         public int Index { get; set; }
         public object Item { get; set; }
-        public bool MouseClick { get; set; }
     }
 }
