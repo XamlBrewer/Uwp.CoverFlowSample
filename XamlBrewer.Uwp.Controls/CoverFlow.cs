@@ -1,33 +1,68 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using Windows.Foundation;
-using Windows.System;
-using Windows.UI.Core;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Media;
-using Windows.UI.Xaml.Media.Animation;
-
-namespace XamlBrewer.Uwp.Controls
+﻿namespace XamlBrewer.Uwp.Controls
 {
+    using System;
+    using System.Collections.Generic;
+    using System.ComponentModel;
+    using Windows.Foundation;
+    using Windows.System;
+    using Windows.UI.Xaml;
+    using Windows.UI.Xaml.Controls;
+    using Windows.UI.Xaml.Input;
+    using Windows.UI.Xaml.Media;
+    using Windows.UI.Xaml.Media.Animation;
+
     public delegate void SelectedItemChangedEvent(CoverFlowEventArgs e);
 
     public class CoverFlow : ItemsControl, INotifyPropertyChanged
     {
+        public event PropertyChangedEventHandler PropertyChanged;
         public event SelectedItemChangedEvent SelectedItemChanged;
+
+        #region Fields
 
         private FrameworkElement LayoutRoot;
         private ItemsPresenter ItemsPresenter;
         private Dictionary<object, CoverFlowItem> _objectToItemContainer;
         private List<CoverFlowItem> items;
 
-        private const double _threshold = 80.0; // Higher values == lower sensitivity
-        private double _distance = 0.0;
-        private bool _begin = true;
+        private double manipulationDistance = 0.0;
+        private bool isManipulationActive = true;
 
         private int selectedIndex;
+        private Duration duration;
+
+        #endregion
+
+        #region Dependency Property Registrations
+
+        public static readonly DependencyProperty EasingFunctionProperty =
+            DependencyProperty.Register("EasingFunction", typeof(EasingFunctionBase), typeof(CoverFlow), null);
+
+        public static readonly DependencyProperty ManipulationThresholdProperty =
+           DependencyProperty.Register("ManipulationThreshold", typeof(Double), typeof(CoverFlow), new PropertyMetadata(80d));
+
+        public static readonly DependencyProperty PageDurationProperty =
+            DependencyProperty.Register("PageDuration", typeof(Duration), typeof(CoverFlow), null);
+
+        public static readonly DependencyProperty RotationAngleProperty =
+            DependencyProperty.Register("RotationAngle", typeof(double), typeof(CoverFlow), new PropertyMetadata(45d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
+
+        public static readonly DependencyProperty ScaleProperty =
+            DependencyProperty.Register("Scale", typeof(double), typeof(CoverFlow), new PropertyMetadata(.7d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
+
+        public static readonly DependencyProperty SingleItemDurationProperty =
+            DependencyProperty.Register("SingleItemDuration", typeof(Duration), typeof(CoverFlow), null);
+
+        public static readonly DependencyProperty SpaceBetweenItemsProperty =
+            DependencyProperty.Register("SpaceBetweenItems", typeof(double), typeof(CoverFlow), new PropertyMetadata(60d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
+
+        public static readonly DependencyProperty SpaceBetweenSelectedItemAndItemsProperty =
+            DependencyProperty.Register("SpaceBetweenSelectedItemAndItems", typeof(double), typeof(CoverFlow), new PropertyMetadata(140d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
+
+        public static readonly DependencyProperty ZDistanceProperty =
+            DependencyProperty.Register("ZDistance", typeof(double), typeof(CoverFlow), new PropertyMetadata(0.0d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
+
+        #endregion
 
         public CoverFlow()
         {
@@ -39,13 +74,36 @@ namespace XamlBrewer.Uwp.Controls
             EasingFunction = new CubicEase();
         }
 
+        #region Item Selection
+
         public int SelectedIndex
         {
             get { return selectedIndex; }
+            set { IndexSelected(value); }
+        }
+
+        public object SelectedItem
+        {
+            get
+            {
+                return items.Count > 0 ? items[SelectedIndex].Content : null;
+            }
             set
             {
-                IndexSelected(value);
+                CoverFlowItem o = GetItemContainerForObject(value);
+                if (o != null)
+                    SelectedIndex = items.IndexOf(o);
             }
+        }
+
+        protected void OnItemSelected(object sender, EventArgs e)
+        {
+            CoverFlowItem item = sender as CoverFlowItem;
+            if (item == null)
+                return;
+            int index = items.IndexOf(item);
+            if (index >= 0)
+                IndexSelected(index);
         }
 
         private void IndexSelected(int index)
@@ -73,123 +131,73 @@ namespace XamlBrewer.Uwp.Controls
             }
         }
 
-        public object SelectedItem
+        #endregion
+
+        #region Properties
+
+        public Double ManipulationThreshold
         {
-            get
-            {
-
-                return items.Count > 0 ? items[SelectedIndex].Content : null;
-            }
-            set
-            {
-                CoverFlowItem o = GetItemContainerForObject(value);
-                if (o != null)
-                    SelectedIndex = items.IndexOf(o);
-            }
+            get { return (Double)GetValue(ManipulationThresholdProperty); }
+            set { SetValue(ManipulationThresholdProperty, value); }
         }
-
-        #region SpaceBetweenItems (DependencyProperty) (l)
 
         public double SpaceBetweenItems
         {
             get { return (double)GetValue(SpaceBetweenItemsProperty); }
             set { SetValue(SpaceBetweenItemsProperty, value); }
         }
-        public static readonly DependencyProperty SpaceBetweenItemsProperty =
-            DependencyProperty.Register("SpaceBetweenItems", typeof(double), typeof(CoverFlow), new PropertyMetadata(60d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
-
-        #endregion
-
-        #region SpaceBetweenSelectedItemAndItems (DependencyProperty) (k)
 
         public double SpaceBetweenSelectedItemAndItems
         {
             get { return (double)GetValue(SpaceBetweenSelectedItemAndItemsProperty); }
             set { SetValue(SpaceBetweenSelectedItemAndItemsProperty, value); }
         }
-        public static readonly DependencyProperty SpaceBetweenSelectedItemAndItemsProperty =
-            DependencyProperty.Register("SpaceBetweenSelectedItemAndItems", typeof(double), typeof(CoverFlow), new PropertyMetadata(140d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
-
-        #endregion
-
-        #region RotationAngle (DependencyProperty) (r)
 
         public double RotationAngle
         {
             get { return (double)GetValue(RotationAngleProperty); }
             set { SetValue(RotationAngleProperty, value); }
         }
-        public static readonly DependencyProperty RotationAngleProperty =
-            DependencyProperty.Register("RotationAngle", typeof(double), typeof(CoverFlow), new PropertyMetadata(45d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
-
-        #endregion
-
-        #region ZDistance (DependencyProperty) (z)
 
         public double ZDistance
         {
             get { return (double)GetValue(ZDistanceProperty); }
             set { SetValue(ZDistanceProperty, value); }
         }
-        public static readonly DependencyProperty ZDistanceProperty =
-            DependencyProperty.Register("ZDistance", typeof(double), typeof(CoverFlow), new PropertyMetadata(0.0d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
-
-        #endregion
-        #region Scale (DependencyProperty) (s)
 
         public double Scale
         {
             get { return (double)GetValue(ScaleProperty); }
             set { SetValue(ScaleProperty, value); }
         }
-        public static readonly DependencyProperty ScaleProperty =
-            DependencyProperty.Register("Scale", typeof(double), typeof(CoverFlow), new PropertyMetadata(.7d, new PropertyChangedCallback(CoverFlow.OnValuesChanged)));
-
-        #endregion
-
-        #region SingleItemDuration (DependencyProperty)
 
         public Duration SingleItemDuration
         {
             get { return (Duration)GetValue(SingleItemDurationProperty); }
             set { SetValue(SingleItemDurationProperty, value); }
         }
-        public static readonly DependencyProperty SingleItemDurationProperty =
-            DependencyProperty.Register("SingleItemDuration", typeof(Duration), typeof(CoverFlow), null);
-
-        #endregion
-
-        #region SingleItemDuration (DependencyProperty)
 
         public Duration PageDuration
         {
             get { return (Duration)GetValue(PageDurationProperty); }
             set { SetValue(PageDurationProperty, value); }
         }
-        public static readonly DependencyProperty PageDurationProperty =
-            DependencyProperty.Register("PageDuration", typeof(Duration), typeof(CoverFlow), null);
-
-        #endregion
-
-
-        #region EasingFunction (DependencyProperty)
 
         public EasingFunctionBase EasingFunction
         {
             get { return (EasingFunctionBase)GetValue(EasingFunctionProperty); }
             set { SetValue(EasingFunctionProperty, value); }
         }
-        public static readonly DependencyProperty EasingFunctionProperty =
-            DependencyProperty.Register("EasingFunction", typeof(EasingFunctionBase), typeof(CoverFlow), null);
-
-        #endregion
 
         private double k { get { return SpaceBetweenSelectedItemAndItems; } }
-        private double l { get { return SpaceBetweenItems; } }
-        private double r { get { return RotationAngle; } }
-        private double z { get { return ZDistance; } }
-        private Duration duration;
 
+        private double l { get { return SpaceBetweenItems; } }
+
+        private double r { get { return RotationAngle; } }
+
+        private double z { get { return ZDistance; } }
+
+        #endregion
 
         #region ItemContainer methods
 
@@ -215,13 +223,6 @@ namespace XamlBrewer.Uwp.Controls
             }
         }
 
-        #endregion
-
-        private static void OnValuesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            (d as CoverFlow).LayoutChildren();
-        }
-
         protected override DependencyObject GetContainerForItemOverride()
         {
             CoverFlowItem item = new CoverFlowItem();
@@ -233,6 +234,13 @@ namespace XamlBrewer.Uwp.Controls
             return (item is CoverFlowItem);
         }
 
+        #endregion
+
+        private static void OnValuesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            (d as CoverFlow).LayoutChildren();
+        }
+
         protected override void OnApplyTemplate()
         {
             base.OnApplyTemplate();
@@ -241,31 +249,11 @@ namespace XamlBrewer.Uwp.Controls
             ItemsPresenter = (ItemsPresenter)GetTemplateChild("ItemsPresenter");
 
             this.ManipulationMode = ManipulationModes.TranslateX | ManipulationModes.TranslateRailsX;
-            this.ManipulationStarted += CoverFlow_ManipulationStarted;
-            this.ManipulationDelta += CoverFlow_ManipulationDelta;
+            this.ManipulationStarted += OnManipulationStarted;
+            this.ManipulationDelta += OnManipulationDelta;
         }
 
-        private void CoverFlow_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
-        {
-            _distance = 0.0;
-            _begin = true;
-        }
-
-        private void CoverFlow_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
-        {
-            _distance += e.Delta.Translation.X;
-
-            if (_begin || _distance < -_threshold || _distance > _threshold)
-            {
-                _distance = 0.0;
-                _begin = false;
-
-                if (e.Delta.Translation.X < 0 && this.SelectedIndex < Items.Count - 1)
-                    NextItem();
-                else if (e.Delta.Translation.X > 0 && this.SelectedIndex > 0)
-                    PreviousItem();
-            }
-        }
+        #region Touch, Mouse, and Keyboard handling
 
         protected override void OnPointerWheelChanged(PointerRoutedEventArgs e)
         {
@@ -282,7 +270,7 @@ namespace XamlBrewer.Uwp.Controls
             // Arrows and US keyboard.
 
             if (e.Key == VirtualKey.Right || e.Key == VirtualKey.D)
-            {
+                {
                 NextItem();
                 e.Handled = true;
             }
@@ -313,6 +301,32 @@ namespace XamlBrewer.Uwp.Controls
             }
         }
 
+        private void OnManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
+        {
+            manipulationDistance = 0.0;
+            isManipulationActive = true;
+        }
+
+        private void OnManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+        {
+            manipulationDistance += e.Delta.Translation.X;
+
+            if (isManipulationActive || manipulationDistance < -ManipulationThreshold || manipulationDistance > ManipulationThreshold)
+            {
+                manipulationDistance = 0.0;
+                isManipulationActive = false;
+
+                // TODO: find a way to give focus to the control, so that keyboard manipulation is restored.
+
+                if (e.Delta.Translation.X < 0 && this.SelectedIndex < Items.Count - 1)
+                    NextItem();
+                else if (e.Delta.Translation.X > 0 && this.SelectedIndex > 0)
+                    PreviousItem();
+            }
+        }
+
+        #endregion
+
         protected override void PrepareContainerForItemOverride(DependencyObject element, object item)
         {
             base.PrepareContainerForItemOverride(element, item);
@@ -339,15 +353,6 @@ namespace XamlBrewer.Uwp.Controls
             LayoutChild(item, index);
         }
 
-        protected void OnItemSelected(object sender, EventArgs e)
-        {
-            CoverFlowItem item = sender as CoverFlowItem;
-            if (item == null)
-                return;
-            int index = items.IndexOf(item);
-            if (index >= 0)
-                IndexSelected(index);
-        }
         protected override void ClearContainerForItemOverride(DependencyObject element, object item)
         {
             base.ClearContainerForItemOverride(element, item);
@@ -358,7 +363,6 @@ namespace XamlBrewer.Uwp.Controls
             }
             items.Remove(item2);
         }
-
 
         protected void LayoutChildren()
         {
@@ -435,6 +439,7 @@ namespace XamlBrewer.Uwp.Controls
             return size;
         }
 
+        #region Navigation
         public void NextItem()
         {
             if (SelectedIndex < items.Count - 1)
@@ -443,6 +448,7 @@ namespace XamlBrewer.Uwp.Controls
                 SelectedIndex++;
             }
         }
+
         public void PreviousItem()
         {
             if (SelectedIndex > 0)
@@ -464,6 +470,7 @@ namespace XamlBrewer.Uwp.Controls
             else
                 SelectedIndex += i;
         }
+
         public void PreviousPage()
         {
             if (SelectedIndex == 0)
@@ -490,6 +497,7 @@ namespace XamlBrewer.Uwp.Controls
             duration = PageDuration;
             SelectedIndex = 0;
         }
+
         public void Last()
         {
             if (items.Count == 0)
@@ -497,6 +505,8 @@ namespace XamlBrewer.Uwp.Controls
             duration = PageDuration;
             SelectedIndex = items.Count - 1;
         }
+
+        #endregion
 
         public void UpdatePositions()
         {
@@ -512,11 +522,5 @@ namespace XamlBrewer.Uwp.Controls
             int index = items.IndexOf(item);
             LayoutChild(item, index);
         }
-
-        #region INotifyPropertyChanged Members
-
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        #endregion
     }
 }
