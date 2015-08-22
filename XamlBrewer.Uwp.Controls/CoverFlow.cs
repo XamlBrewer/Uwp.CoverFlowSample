@@ -28,6 +28,17 @@ namespace XamlBrewer.Uwp.Controls
         private bool _begin = true;
 
         private int selectedIndex;
+
+        public CoverFlow()
+        {
+            DefaultStyleKey = typeof(CoverFlow);
+            items = new List<CoverFlowItem>();
+            SingleItemDuration = new Duration(TimeSpan.FromMilliseconds(600));
+            PageDuration = new Duration(TimeSpan.FromMilliseconds(900));
+            duration = SingleItemDuration;
+            EasingFunction = new CubicEase();
+        }
+
         public int SelectedIndex
         {
             get { return selectedIndex; }
@@ -180,16 +191,6 @@ namespace XamlBrewer.Uwp.Controls
         private Duration duration;
 
 
-        public CoverFlow()
-        {
-            DefaultStyleKey = typeof(CoverFlow);
-            items = new List<CoverFlowItem>();
-            SingleItemDuration = new Duration(TimeSpan.FromMilliseconds(600));
-            PageDuration = new Duration(TimeSpan.FromMilliseconds(900));
-            duration = SingleItemDuration;
-            EasingFunction = new CubicEase();
-        }
-
         #region ItemContainer methods
 
         protected CoverFlowItem GetItemContainerForObject(object value)
@@ -235,22 +236,22 @@ namespace XamlBrewer.Uwp.Controls
         protected override void OnApplyTemplate()
         {
             base.OnApplyTemplate();
+
             LayoutRoot = (FrameworkElement)GetTemplateChild("LayoutRoot");
             ItemsPresenter = (ItemsPresenter)GetTemplateChild("ItemsPresenter");
 
             this.ManipulationMode = ManipulationModes.TranslateX | ManipulationModes.TranslateRailsX;
             this.ManipulationStarted += CoverFlow_ManipulationStarted;
             this.ManipulationDelta += CoverFlow_ManipulationDelta;
-            this.PointerWheelChanged += CoverFlow_PointerWheelChanged;
         }
 
-        void CoverFlow_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
+        private void CoverFlow_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
         {
             _distance = 0.0;
             _begin = true;
         }
 
-        void CoverFlow_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+        private void CoverFlow_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
         {
             _distance += e.Delta.Translation.X;
 
@@ -266,17 +267,56 @@ namespace XamlBrewer.Uwp.Controls
             }
         }
 
-        void CoverFlow_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+        protected override void OnPointerWheelChanged(PointerRoutedEventArgs e)
         {
             if (e.GetCurrentPoint(null).Properties.MouseWheelDelta > 0 && this.SelectedIndex > 0)
                 PreviousItem();
             else if (e.GetCurrentPoint(null).Properties.MouseWheelDelta < 0 && this.SelectedIndex < Items.Count - 1)
                 NextItem();
+
+            base.OnPointerWheelChanged(e);
+        }
+
+        protected override void OnKeyDown(KeyRoutedEventArgs e)
+        {
+            // Arrows and US keyboard.
+
+            if (e.Key == VirtualKey.Right || e.Key == VirtualKey.D)
+            {
+                NextItem();
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.Left || e.Key == VirtualKey.A)
+            {
+                PreviousItem();
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.PageDown || e.Key == VirtualKey.S || e.Key == VirtualKey.Down)
+            {
+                NextPage();
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.PageUp || e.Key == VirtualKey.W || e.Key == VirtualKey.Up)
+            {
+                PreviousPage();
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.Home || e.Key == VirtualKey.Q)
+            {
+                First();
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.End || e.Key == VirtualKey.E)
+            {
+                Last();
+                e.Handled = true;
+            }
         }
 
         protected override void PrepareContainerForItemOverride(DependencyObject element, object item)
         {
             base.PrepareContainerForItemOverride(element, item);
+
             CoverFlowItem item2 = element as CoverFlowItem;
             if (item2 != item)
             {
@@ -285,21 +325,21 @@ namespace XamlBrewer.Uwp.Controls
             if (!items.Contains(item2))
             {
                 items.Add(item2);
-                item2.ItemSelected += Item_Selected;
-                item2.SizeChanged += Item_SizeChanged;
+                item2.ItemSelected += OnItemSelected;
+                item2.SizeChanged += OnItemSizeChanged;
             }
             if (items.Count == 1)
                 IndexSelected(0, false);
         }
 
-        protected void Item_SizeChanged(object sender, SizeChangedEventArgs e)
+        protected void OnItemSizeChanged(object sender, SizeChangedEventArgs e)
         {
             CoverFlowItem item = sender as CoverFlowItem;
             int index = items.IndexOf(item);
             LayoutChild(item, index);
         }
 
-        protected void Item_Selected(object sender, EventArgs e)
+        protected void OnItemSelected(object sender, EventArgs e)
         {
             CoverFlowItem item = sender as CoverFlowItem;
             if (item == null)
